@@ -14,7 +14,6 @@ A web-based mapping application that allows users to geotag photos by selecting 
 ## 📸 Screenshot
 
 ![Photo Geo-Tagger Screenshot](screenshot.png)
-*Add your screenshot image here - replace `screenshot.png` with your image filename*
 
 ## 🌐 Live Demo
 
@@ -128,7 +127,7 @@ This project is open source and available under the [MIT License](LICENSE).
 ## 👤 Author
 
 **Your Name**
-- GitHub: [@yourusername](https://github.com/yourusername)
+- GitHub: [@edgarrcode](https://github.com/edgarrcode)
 - Website: [edgarr.com](https://edgarr.com)
 
 ---
