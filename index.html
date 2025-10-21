@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Photo Geo-Tagging Map</title>
+  
+  <!-- Calcite Components -->
+  <script src="https://js.arcgis.com/calcite-components/2.13.2/calcite.esm.js" type="module"></script>
+  <link rel="stylesheet" href="https://js.arcgis.com/calcite-components/2.13.2/calcite.css" />
+  
+  <!-- ArcGIS Maps SDK -->
+  <script src="https://js.arcgis.com/4.31/"></script>
+  <link rel="stylesheet" href="https://js.arcgis.com/4.31/esri/themes/light/main.css" />
+  
+  <style>
+    html, body {
+      padding: 0;
+      margin: 0;
+      height: 100%;
+      width: 100%;
+      display: flex;
+    }
+    
+    #viewDiv {
+      height: 100%;
+      width: 100%;
+    }
+    
+    #info-content {
+      padding: 0.75rem;
+    }
+    
+    .photo-preview {
+      max-width: 100%;
+      border-radius: 4px;
+      margin: 10px 0;
+    }
+    
+    .photo-item {
+      padding: 10px;
+      border-bottom: 1px solid #eee;
+      cursor: pointer;
+    }
+    
+    .photo-item:hover {
+      background: #f5f5f5;
+    }
+    
+    .photo-item img {
+      width: 60px;
+      height: 60px;
+      object-fit: cover;
+      border-radius: 4px;
+      margin-right: 10px;
+      vertical-align: middle;
+    }
+    
+    #upload-section {
+      padding: 1rem;
+    }
+    
+    .file-input-wrapper {
+      margin: 1rem 0;
+    }
+  </style>
+</head>
+
+<body>
+  <calcite-loader id="app-loader"></calcite-loader>
+  
+  <calcite-shell content-behind hidden>
+    <calcite-navigation slot="header">
+      <calcite-navigation-logo id="header-title" heading="Photo Geo-Tagger" slot="logo">
+      </calcite-navigation-logo>
+    </calcite-navigation>
+    
+    <calcite-shell-panel slot="panel-start" display-mode="float">
+      <calcite-action-bar slot="action-bar">
+        <calcite-action data-action-id="upload" icon="upload" text="Upload Photo"></calcite-action>
+        <calcite-action data-action-id="gallery" icon="images" text="Gallery"></calcite-action>
+        <calcite-action data-action-id="basemaps" icon="basemap" text="Basemaps"></calcite-action>
+        <calcite-action data-action-id="info" icon="information" text="Info"></calcite-action>
+      </calcite-action-bar>
+      
+      <!-- Upload Panel -->
+      <calcite-panel heading="Upload Photo" data-panel-id="upload" closed closable>
+        <div id="upload-section">
+          <calcite-notice open>
+            <div slot="message">Click on the map to place your photo marker, then upload a photo.</div>
+          </calcite-notice>
+          
+          <div class="file-input-wrapper">
+            <calcite-label>
+              Photo
+              <input type="file" id="photo-input" accept="image/*" />
+            </calcite-label>
+          </div>
+          
+          <calcite-label>
+            Title
+            <calcite-input id="photo-title" placeholder="Photo title"></calcite-input>
+          </calcite-label>
+          
+          <calcite-label>
+            Description
+            <calcite-text-area id="photo-description" placeholder="Add a description..."></calcite-text-area>
+          </calcite-label>
+          
+          <calcite-label>
+            Tags
+            <calcite-input id="photo-tags" placeholder="nature, travel, sunset"></calcite-input>
+          </calcite-label>
+          
+          <div style="margin-top: 1rem;">
+            <calcite-button id="save-photo-btn" width="full" disabled>Save Photo</calcite-button>
+          </div>
+          
+          <div id="selected-location" style="margin-top: 1rem; font-size: 0.9rem; color: #666;">
+            No location selected. Click on the map to choose a location.
+          </div>
+        </div>
+      </calcite-panel>
+      
+      <!-- Gallery Panel -->
+      <calcite-panel heading="Photo Gallery" data-panel-id="gallery" closed closable>
+        <div id="gallery-content">
+          <div id="photo-list"></div>
+        </div>
+      </calcite-panel>
+      
+      <!-- Basemaps Panel -->
+      <calcite-panel heading="Basemaps" data-panel-id="basemaps" closed closable>
+        <div id="basemap-gallery"></div>
+      </calcite-panel>
+      
+      <!-- Info Panel -->
+      <calcite-panel heading="About" data-panel-id="info" closed closable>
+        <div id="info-content">
+          <p>📸 <strong>Photo Geo-Tagger</strong></p>
+          <p>Tag your photos with locations on the map!</p>
+          <p><strong>How to use:</strong></p>
+          <ol>
+            <li>Click "Upload Photo" in the sidebar</li>
+            <li>Click anywhere on the map to set a location</li>
+            <li>Upload your photo and add details</li>
+            <li>View all photos in the Gallery</li>
+          </ol>
+        </div>
+      </calcite-panel>
+      
+    </calcite-shell-panel>
+    
+    <div id="viewDiv"></div>
+  </calcite-shell>
+
+  <script>
+    require([
+      "esri/config",
+      "esri/Map",
+      "esri/views/MapView",
+      "esri/Graphic",
+      "esri/layers/GraphicsLayer",
+      "esri/widgets/BasemapGallery",
+      "esri/geometry/Point",
+      "esri/symbols/PictureMarkerSymbol",
+      "esri/PopupTemplate"
+    ], (esriConfig, Map, MapView, Graphic, GraphicsLayer, BasemapGallery, Point, PictureMarkerSymbol, PopupTemplate) => {
+      
+      // IMPORTANT: Replace with your ArcGIS API key
+      // Get one free at: https://developers.arcgis.com/api-keys/
+      esriConfig.apiKey = "AAPTxy8BH1VEsoebNVZXo8HurG64hhKkUGxe8PRrry-NlfIY-tbtj9xQyOmJZhePc4qJ_nXCIzzPsP0peKoOkLiXwh77PUxvm7SF8oZajTcaJG4J4U2gu5_Urfdbv9chAba55RoB31yCeoe2mM3-i1NcYj8w6SWzFrpQdA39P8IJpwBiVmTP5Q5aoaY3kC5iNsoPw_ETo5ba4r7iFC94qCaOyCFN3_j8-1khhNyyuIR9PXc.AT1_I13APCSG";
+      
+      console.log("API Key set, creating map...");
+      
+      // Store photos
+      let photos = [];
+      let selectedLocation = null;
+      let isPlacingMarker = false;
+      
+      // Create graphics layer for photo markers
+      const photosLayer = new GraphicsLayer({
+        title: "Photos"
+      });
+      
+      // Create map
+      const map = new Map({
+        basemap: "streets-navigation-vector",
+        layers: [photosLayer]
+      });
+      
+      // Create view
+      const view = new MapView({
+        container: "viewDiv",
+        map: map,
+        center: [-118.805, 34.027],
+        zoom: 13,
+        padding: { left: 49 }
+      });
+      
+      // Basemap gallery
+      const basemapGallery = new BasemapGallery({
+        view: view,
+        container: "basemap-gallery"
+      });
+      
+      // Handle map click for placing photo marker
+      view.on("click", (event) => {
+        if (isPlacingMarker) {
+          selectedLocation = {
+            latitude: event.mapPoint.latitude,
+            longitude: event.mapPoint.longitude
+          };
+          
+          document.getElementById("selected-location").innerHTML = `
+            📍 <strong>Location selected:</strong><br>
+            Lat: ${selectedLocation.latitude.toFixed(6)}<br>
+            Lng: ${selectedLocation.longitude.toFixed(6)}
+          `;
+          
+          // Enable save button if photo is selected
+          if (document.getElementById("photo-input").files.length > 0) {
+            document.getElementById("save-photo-btn").disabled = false;
+          }
+        }
+      });
+      
+      // Watch for upload panel opening
+      let activeWidget = null;
+      
+      const handleActionBarClick = ({ target }) => {
+        if (target.tagName !== "CALCITE-ACTION") {
+          return;
+        }
+        
+        if (activeWidget) {
+          document.querySelector(`[data-action-id=${activeWidget}]`).active = false;
+          document.querySelector(`[data-panel-id=${activeWidget}]`).closed = true;
+        }
+        
+        const nextWidget = target.dataset.actionId;
+        if (nextWidget !== activeWidget) {
+          document.querySelector(`[data-action-id=${nextWidget}]`).active = true;
+          document.querySelector(`[data-panel-id=${nextWidget}]`).closed = false;
+          activeWidget = nextWidget;
+          
+          // Enable marker placement mode when upload panel opens
+          isPlacingMarker = (nextWidget === "upload");
+          
+          // Update gallery when it opens
+          if (nextWidget === "gallery") {
+            updateGallery();
+          }
+        } else {
+          activeWidget = null;
+          isPlacingMarker = false;
+        }
+      };
+      
+      document.querySelector("calcite-action-bar").addEventListener("click", handleActionBarClick);
+      
+      // Handle panel closing
+      document.querySelectorAll("calcite-panel").forEach(panel => {
+        panel.addEventListener("calcitePanelClose", () => {
+          if (activeWidget) {
+            document.querySelector(`[data-action-id=${activeWidget}]`).active = false;
+          }
+          activeWidget = null;
+          isPlacingMarker = false;
+        });
+      });
+      
+      // Photo input change
+      document.getElementById("photo-input").addEventListener("change", (e) => {
+        if (e.target.files.length > 0 && selectedLocation) {
+          document.getElementById("save-photo-btn").disabled = false;
+        }
+      });
+      
+      // Save photo
+      document.getElementById("save-photo-btn").addEventListener("click", () => {
+        const fileInput = document.getElementById("photo-input");
+        const file = fileInput.files[0];
+        
+        if (!file || !selectedLocation) {
+          alert("Please select a location and photo");
+          return;
+        }
+        
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const photo = {
+            id: Date.now(),
+            url: e.target.result,
+            title: document.getElementById("photo-title").value || "Untitled Photo",
+            description: document.getElementById("photo-description").value || "",
+            tags: document.getElementById("photo-tags").value || "",
+            location: selectedLocation,
+            date: new Date().toLocaleDateString()
+          };
+          
+          photos.push(photo);
+          addPhotoToMap(photo);
+          
+          // Reset form
+          fileInput.value = "";
+          document.getElementById("photo-title").value = "";
+          document.getElementById("photo-description").value = "";
+          document.getElementById("photo-tags").value = "";
+          selectedLocation = null;
+          document.getElementById("selected-location").innerHTML = "No location selected. Click on the map to choose a location.";
+          document.getElementById("save-photo-btn").disabled = true;
+          
+          alert("Photo saved! 📸");
+        };
+        
+        reader.readAsDataURL(file);
+      });
+      
+      // Add photo marker to map
+      function addPhotoToMap(photo) {
+        const point = new Point({
+          longitude: photo.location.longitude,
+          latitude: photo.location.latitude
+        });
+        
+        const markerSymbol = {
+          type: "simple-marker",
+          color: [226, 119, 40],
+          outline: {
+            color: [255, 255, 255],
+            width: 2
+          },
+          size: 12
+        };
+        
+        const popupTemplate = new PopupTemplate({
+          title: "{title}",
+          content: function(feature) {
+            const attrs = feature.graphic.attributes;
+            const div = document.createElement("div");
+            div.innerHTML = `
+              <div style="text-align: center;">
+                <img src="${attrs.url}" style="max-width: 250px; width: 100%; height: auto; border-radius: 4px; margin: 10px 0;" 
+                     onerror="this.style.display='none'">
+              </div>
+              ${attrs.description ? `<p style="margin: 10px 0;">${attrs.description}</p>` : ''}
+              ${attrs.tags ? `<p style="margin: 5px 0;"><strong>Tags:</strong> ${attrs.tags}</p>` : ''}
+              <p style="margin: 5px 0; color: #666; font-size: 0.9em;"><strong>Date:</strong> ${attrs.date}</p>
+            `;
+            return div;
+          }
+        });
+        
+        const graphic = new Graphic({
+          geometry: point,
+          symbol: markerSymbol,
+          attributes: {
+            title: photo.title,
+            url: photo.url,
+            description: photo.description,
+            tags: photo.tags,
+            date: photo.date
+          },
+          popupTemplate: popupTemplate
+        });
+        
+        photosLayer.add(graphic);
+      }
+      
+      // Update gallery
+      function updateGallery() {
+        const photoList = document.getElementById("photo-list");
+        
+        if (photos.length === 0) {
+          photoList.innerHTML = '<div style="padding: 1rem; text-align: center; color: #666;">No photos yet. Upload your first photo!</div>';
+          return;
+        }
+        
+        photoList.innerHTML = photos.map(photo => `
+          <div class="photo-item" onclick="zoomToPhoto(${photo.location.latitude}, ${photo.location.longitude})">
+            <img src="${photo.url}" alt="${photo.title}">
+            <div style="display: inline-block; vertical-align: middle;">
+              <strong>${photo.title}</strong><br>
+              <span style="font-size: 0.9rem; color: #666;">${photo.date}</span>
+            </div>
+          </div>
+        `).join("");
+      }
+      
+      // Zoom to photo
+      window.zoomToPhoto = (lat, lng) => {
+        view.goTo({
+          center: [lng, lat],
+          zoom: 16
+        });
+      };
+      
+      // Action bar expand/collapse
+      let actionBarExpanded = false;
+      document.addEventListener("calciteActionBarToggle", (event) => {
+        actionBarExpanded = !actionBarExpanded;
+        view.padding = {
+          left: actionBarExpanded ? 150 : 49
+        };
+      });
+      
+      // Hide loader when ready
+      view.when(() => {
+        console.log("Map view ready!");
+        document.querySelector("calcite-shell").hidden = false;
+        document.getElementById("app-loader").hidden = true;
+      }).catch((error) => {
+        console.error("Map view error:", error);
+        alert("Error loading map. Please check your API key and console for details.");
+        document.querySelector("calcite-shell").hidden = false;
+        document.getElementById("app-loader").hidden = true;
+      });
+      
+      // Fallback timeout in case view never loads
+      setTimeout(() => {
+        if (document.getElementById("app-loader").hidden === false) {
+          console.warn("Map taking too long to load, showing UI anyway");
+          document.querySelector("calcite-shell").hidden = false;
+          document.getElementById("app-loader").hidden = true;
+        }
+      }, 10000); // 10 second timeout
+    });
+  </script>
+</body>
+</html>
